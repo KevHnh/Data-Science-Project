@@ -37,7 +37,7 @@ mvc = pd.read_csv('Motor_Vehicle_Collisions_2019_Crashes.csv')
 mi = pd.read_csv('Median Incomes.csv')
 phm = pd.read_csv('Potholes.csv')
 
-# MVC DATA FILTERING
+# MVC DATA FILTERING - Filtered out all rows with blank nodes and dropped unnecessary columns
 mvc = mvc.fillna("Invalid")
 mvc = mvc[~mvc["CONTRIBUTING FACTOR VEHICLE 1"].str.contains('Unspecified')]
 mvc = mvc[~mvc["CONTRIBUTING FACTOR VEHICLE 1"].str.contains('Invalid')]
@@ -55,7 +55,7 @@ mvc = mvc.drop(columns=["ON STREET NAME", "CROSS STREET NAME", "OFF STREET NAME"
                         "VEHICLE TYPE CODE 1", "VEHICLE TYPE CODE 2", "VEHICLE TYPE CODE 3", "VEHICLE TYPE CODE 4",
                         "VEHICLE TYPE CODE 5"])
 
-# NEDIAN INCOME DATA FILTERING
+# NEDIAN INCOME DATA FILTERING - Filtered out all blank nodes, and only kept rows that belong in 2019
 mi = mi[mi['Location'].notna()]
 mi = mi.drop(columns=['Fips', 'DataFormat'])
 mi = mi[mi.Location.str.contains('Zip')]
@@ -65,7 +65,7 @@ mi['TimeFrame'] = mi['TimeFrame'].astype(str)
 mi = mi[mi.TimeFrame.str.contains('2019')].reset_index(drop=True)
 mi['Data'] = mi['Data'].astype(int)
 
-# TOP 5 ZIP CODES WITH HIGHEST COLLISIONS
+# TOP 5 ZIP CODES WITH HIGHEST COLLISIONS - SQL query that counts unique zip codes from mvc data and displays top 5
 mvc_cnt = 'select "ZIP CODE", count("ZIP CODE") as cnt from mvc group by "ZIP CODE" order by cnt desc limit 5'
 mvc_cnt = psql.sqldf(mvc_cnt)
 print(mvc_cnt)
@@ -79,13 +79,13 @@ c_mon = 'select "CRASH DATE" as month, count("CRASH DATE") as cnt from mon group
 c_mon = psql.sqldf(c_mon)
 print(c_mon)
 
-# COUNT OF ACCIDENTS RESULTING IN DEATH
+# COUNT OF ACCIDENTS RESULTING IN DEATH - Uses sum() to get count of each column
 death = mvc["NUMBER OF PERSONS KILLED"].sum()
 injured = mvc["NUMBER OF PERSONS INJURED"].sum()
 print(death)
 print(injured)
 
-# TOP 5 ZIP CODES WITH LOWEST MEDIAN INCOME (ALL HOUSEHOLDS)
+# TOP 5 ZIP CODES WITH LOWEST MEDIAN INCOME (ALL HOUSEHOLDS) - SQL query that sorts income column and shows lowest 5
 mi['Location'] = mi['Location'].astype(int)
 mi['Data'] = mi['Data'].astype(int)
 mi_cnt = 'select "Location", "Data" from mi group by "Location" order by "Data" asc limit 5'
@@ -101,11 +101,11 @@ mi['Location'] = mi['Location'].astype(int)
 ans = mi.loc[mi['Location'].isin(mvc_list)]
 print(ans)
 
-# COLLISION FACTORS
+# COLLISION FACTORS - Lists all different types of values in column
 cf = mvc["CONTRIBUTING FACTOR VEHICLE 1"].unique()
 print(cf)
 
-# COLLISION FACTORS (COUNT)
+# COLLISION FACTORS (COUNT) - Counts number of each type of factor
 cf_cnt = mvc["CONTRIBUTING FACTOR VEHICLE 1"].value_counts()
 print(cf_cnt)
 
@@ -114,18 +114,19 @@ cftop10 = cf_cnt.nlargest(10)
 cf_pie = cftop10.plot(kind='pie')
 plt.show()
 
-# COLLISION COUNT PER ZIPCODE
+# COLLISION COUNT PER ZIPCODE - SQL query that gets number of collisions per zipcode and convert it to dataframe
 mvc_cnt = 'select "ZIP CODE", count("ZIP CODE") as cnt from mvc group by "ZIP CODE"'
 mvc_cnt = psql.sqldf(mvc_cnt)
 zip_df = pd.DataFrame(mvc_cnt)
 zip_df = zip_df.iloc[1:, :]
 print(zip_df)
 
-# HEAT MAP OF COLLISIONS
+# HEAT MAP OF COLLISIONS PREP - Filtered out unusable data and converted latitude and longitude into pair of coordinate
 mvc["LATITUDE"] = mvc["LATITUDE"].astype(float)
 mvc["LONGITUDE"] = mvc["LONGITUDE"].astype(float)
 mvc["coord"] = list(zip(mvc['LATITUDE'], mvc['LONGITUDE']))
 
+# HEAT MAP OF COLLISIONS - Open JSON, create map, turn list of coordinates into naparry, pass data into HeatMap, and overlay the GeoJSON
 geojson = json.load(open("zipcode_map.geojson"))
 map = folium.Map(location=[40.7128, -74.0060], zoom_start=12)
 data = np.asarray(mvc["coord"])
@@ -133,9 +134,10 @@ folium.GeoJson(geojson).add_to(map)
 HeatMap(data).add_to(map)
 folium.GeoJson(geojson).add_child(folium.features.GeoJsonTooltip(['ZIPCODE'])).add_to(map)
 
+# saves map
 map.save("output1.html")
 
-# CHOROPLETH MAP OF COLLISIONS
+# CHOROPLETH MAP OF COLLISIONS - map based on zipcode and count of collisions within each zipcode
 map2 = folium.Map(location=[40.7128, -74.0060], zoom_start=12)
 choropleth1 = folium.Choropleth(geo_data=geojson,
                                 name="choropleth",
@@ -148,13 +150,15 @@ choropleth1 = folium.Choropleth(geo_data=geojson,
                                 threshold_scale=[0, 300, 600, 900, 1200, 1500, 1800, 2100],
                                 highlight=True).add_to(map2)
 
+# Adds a popup feature that displays the zipcode mouse is currently hovering over
 choropleth1.geojson.add_child(
     folium.features.GeoJsonTooltip(['ZIPCODE'])
 )
 
+# saves map
 map2.save("output2.html")
 
-# POTHOLE DATA PROCESSING
+# POTHOLE DATA PROCESSING - Filtered out unusable data and converted latitude and longitude into pair of coordinate
 phm = phm.fillna("Invalid")
 phm['Year'] = phm['Created Date'].str[6:10]
 phm = (phm.loc[phm['Year'].isin(['2019'])])
@@ -166,10 +170,12 @@ phm["Latitude"] = phm["Latitude"].astype(float)
 phm["Longitude"] = phm["Longitude"].astype(float)
 phm["coord"] = list(zip(phm['Latitude'], phm['Longitude']))
 
+# HEATMAP OF PHM - Followed same technique as heatmap for collisions
 data2 = np.asarray(phm["coord"])
 phm_map = folium.Map(location=[40.7128, -74.0060], zoom_start=12)
 folium.GeoJson(geojson).add_to(phm_map)
 HeatMap(data2).add_to(phm_map)
 folium.GeoJson(geojson).add_child(folium.features.GeoJsonTooltip(['ZIPCODE'])).add_to(phm_map)
 
+# saves map
 phm_map.save("output4.html")
